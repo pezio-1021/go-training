@@ -5,9 +5,16 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"lenslocked.com/views"
 )
 
+var homeView *views.View
+var contactView *views.View
+
 func main() {
+	homeView = views.NewView("views/home.gohtml")
+	contactView = views.NewView("views/contact.gohtml")
+
 	var h http.Handler = http.HandlerFunc(home)
 	r := mux.NewRouter()
 	r.HandleFunc("/", home)
@@ -19,15 +26,16 @@ func main() {
 
 func home(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprint(w, "<h1>Welcome to my awesome site!</h1>")
+	if err := homeView.Template.Execute(w, nil); err != nil {
+		panic(err)
+	}
 }
 
 func contact(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprint(w, "<h1>We could not find the page you "+
-		"were looking for :(</h1>"+
-		"<p>Please email us if you keep being sent to an "+
-		"invalid page. </p>")
+	if err := contactView.Template.Execute(w, nil); err != nil {
+		panic(err)
+	}
 }
 
 func faq(w http.ResponseWriter, r *http.Request) {
