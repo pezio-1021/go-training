@@ -14,31 +14,13 @@ var (
 )
 
 func main() {
-	homeView = views.NewView("bootstrap", "views/home.gohtml")
-	contactView = views.NewView("bootstrap", "views/contact.gohtml")
+	staticC := controllers.NewStatic()
 	userC := controllers.NewUsers()
 
-	var h http.Handler = http.HandlerFunc(home)
 	r := mux.NewRouter()
-	r.HandleFunc("/", home)
-	r.HandleFunc("/contact", contact)
-	r.HandleFunc("/signup", userC.New)
-	r.NotFoundHandler = h
+	r.Handle("/", staticC.Home).Methods("GET")
+	r.Handle("/contact", staticC.Contact).Methods("GET")
+	r.HandleFunc("/signup", userC.New).Methods("GET")
+	r.HandleFunc("/signup", userC.Create).Methods("POST")
 	http.ListenAndServe(":3000", r)
-}
-
-func home(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html")
-	must(homeView.Render(w, nil))
-}
-
-func contact(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html")
-	must(contactView.Render(w, nil))
-}
-
-func must(err error) {
-	if err != nil {
-		panic(err)
-	}
 }
