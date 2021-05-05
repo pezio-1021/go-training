@@ -1,10 +1,7 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"strings"
 
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/postgres"
@@ -25,6 +22,13 @@ type User struct {
 	Email string `gorm:"not null;unique_index"`
 }
 
+type Order struct {
+	gorm.Model
+	UserID      uint
+	Amount      int
+	Description string
+}
+
 func main() {
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
 		"password=%s dbname=%s sslmode=disable",
@@ -37,26 +41,38 @@ func main() {
 
 	defer db.Close()
 	db.LogMode(true)
-	db.AutoMigrate(&User{})
+	db.AutoMigrate(&User{}, &Order{})
 
-	name, email := getInfo()
-	u := &User{
-		Name:  name,
-		Email: email,
+	var user User
+	db.First(&user)
+	if db.Error != nil {
+		panic(db.Error)
 	}
-	if err := db.Create(u).Error; err != nil {
-		panic(err)
-	}
-	fmt.Printf("%+v\n", u)
+
+	createOrder(db, user, 1001, "Fake Description #1")
+	createOrder(db, user, 1001, "Fake Description #2")
+	createOrder(db, user, 1001, "Fake Description #3")
 }
 
-func getInfo() (name, email string) {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Println("What is your name?")
-	name, _ = reader.ReadString('\n')
-	name = strings.TrimSpace(name)
-	fmt.Println("What is your email?")
-	email, _ = reader.ReadString('\n')
-	email = strings.TrimSpace(email)
-	return name, email
+func createOrder(db *gorm.DB, user User, amount int, desc string) {
+	db.Create(&Order{
+		UserID:      user.ID,
+		Amount:      amount,
+		Description: desc,
+	})
+
+	if db.Error != nil {
+		panic(db.Error)
+	}
 }
+
+// func getInfo() (name, email string) {
+// 	reader := bufio.NewReader(os.Stdin)
+// 	fmt.Println("What is your name?")
+// 	name, _ = reader.ReadString('\n')
+// 	name = strings.TrimSpace(name)
+// 	fmt.Println("What is your email?")
+// 	email, _ = reader.ReadString('\n')
+// 	email = strings.TrimSpace(email)
+// 	return name, email
+// }
