@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 
+	"lenslocked.com/models"
+
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/postgres"
 	_ "github.com/lib/pq"
@@ -34,24 +36,27 @@ func main() {
 		"password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
 
-	db, err := gorm.Open("postgres", psqlInfo)
+	us, err := models.NewUserService(psqlInfo)
 	if err != nil {
 		panic(err)
 	}
+	defer us.Close()
+	us.DestructiveReset()
 
-	defer db.Close()
-	db.LogMode(true)
-	db.AutoMigrate(&User{}, &Order{})
-
-	var user User
-	db.First(&user)
-	if db.Error != nil {
-		panic(db.Error)
+	user := models.User{
+		Name:  "shohei Takahashi",
+		Email: "s@gmail.com",
 	}
 
-	createOrder(db, user, 1001, "Fake Description #1")
-	createOrder(db, user, 1001, "Fake Description #2")
-	createOrder(db, user, 1001, "Fake Description #3")
+	if err := us.Create(&user); err != nil {
+		panic(err)
+	}
+
+	foundUser, err := us.ByID(1)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(foundUser)
 }
 
 func createOrder(db *gorm.DB, user User, amount int, desc string) {
