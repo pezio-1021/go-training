@@ -26,7 +26,7 @@ func main() {
 		panic(err)
 	}
 	defer us.Close()
-	us.AutoMigrate()
+	us.DestructiveReset()
 
 	staticC := controllers.NewStatic()
 	userC := controllers.NewUsers(us)
@@ -37,5 +37,7 @@ func main() {
 	r.Handle("/faq", staticC.Faq).Methods("GET")
 	r.HandleFunc("/signup", userC.New).Methods("GET")
 	r.HandleFunc("/signup", userC.Create).Methods("POST")
+	r.Handle("/login", userC.LoginView).Methods("GET")
+	r.HandleFunc("/login", userC.Login).Methods("POST")
 	http.ListenAndServe(":3000", r)
 }

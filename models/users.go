@@ -5,13 +5,16 @@ import (
 
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/postgres"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
 	// ErrNotFound is returned when a resource cannot be found
 	// in the database.
-	ErrNotFound  = errors.New("models: resource not found")
-	ErrInvalidID = errors.New("models: ID provided was invalid")
+	ErrNotFound        = errors.New("models: resource not found")
+	ErrInvalidID       = errors.New("models: ID provided was invalid")
+	userPwPepper       = "secret-random-string"
+	ErrInvalidPassword = errors.New("models: incorrect password provided")
 )
 
 type UserService struct {
@@ -20,8 +23,10 @@ type UserService struct {
 
 type User struct {
 	gorm.Model
-	Name  string
-	Email string `gorm:"not null; unique_index"`
+	Name         string
+	Email        string `gorm:"not null; unique_index"`
+	Password     string `gorm:"-"`
+	PasswordHash string `gorm:"not null"`
 }
 
 func NewUserService(connectioninfo string) (*UserService, error) {
@@ -56,6 +61,10 @@ func (us *UserService) ByEmail(email string) (*User, error) {
 	return &user, nil
 }
 
+func (us *UserService) Authenticate(email, password string) (*User, error) {
+	return nil, nil
+}
+
 func first(db *gorm.DB, dst interface{}) error {
 	err := db.First(dst).Error
 	if err == gorm.ErrRecordNotFound {
@@ -81,7 +90,16 @@ func (us *UserService) AutoMigrate() error {
 }
 
 func (us *UserService) Create(user *User) error {
+	pwBytes := []byte(user.Password + userPwPepper)
+	hashBytes, err := bcrypt.GenerateFromPassword(
+		pwBytes, bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	user.PasswordHash = string(hashBytes)
+	user.Password = ""
 	return us.db.Create(user).Error
+
 }
 
 func (us *UserService) Update(user *User) error {
