@@ -62,7 +62,23 @@ func (us *UserService) ByEmail(email string) (*User, error) {
 }
 
 func (us *UserService) Authenticate(email, password string) (*User, error) {
-	return nil, nil
+	foundUser, err := us.ByEmail(email)
+	if err != nil {
+		return nil, err
+	}
+
+	err = bcrypt.CompareHashAndPassword(
+		[]byte(foundUser.PasswordHash),
+		[]byte(password+userPwPepper))
+
+	switch err {
+	case nil:
+		return foundUser, nil
+	case bcrypt.ErrMismatchedHashAndPassword:
+		return nil, ErrInvalidPassword
+	default:
+		return nil, err
+	}
 }
 
 func first(db *gorm.DB, dst interface{}) error {
