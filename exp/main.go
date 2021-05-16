@@ -4,10 +4,6 @@ import (
 	"fmt"
 
 	"lenslocked.com/models"
-
-	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/postgres"
-	_ "github.com/lib/pq"
 )
 
 const (
@@ -18,66 +14,35 @@ const (
 	dbname   = "lenslocked_dev"
 )
 
-type User struct {
-	gorm.Model
-	Name  string
-	Email string `gorm:"not null;unique_index"`
-}
-
-type Order struct {
-	gorm.Model
-	UserID      uint
-	Amount      int
-	Description string
-}
-
 func main() {
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
 		"password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
-
 	us, err := models.NewUserService(psqlInfo)
 	if err != nil {
 		panic(err)
 	}
 	defer us.Close()
 	us.DestructiveReset()
-
 	user := models.User{
-		Name:  "shohei Takahashi",
-		Email: "s@gmail.com",
+		Name:     "Michael Scott",
+		Email:    "michael@dundermifflin.com",
+		Password: "bestboss",
 	}
-
-	if err := us.Create(&user); err != nil {
-		panic(err)
-	}
-
-	foundUser, err := us.ByID(1)
+	err = us.Create(&user)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(foundUser)
-}
-
-func createOrder(db *gorm.DB, user User, amount int, desc string) {
-	db.Create(&Order{
-		UserID:      user.ID,
-		Amount:      amount,
-		Description: desc,
-	})
-
-	if db.Error != nil {
-		panic(db.Error)
+	// Verify that the user has a Remember and RememberHash
+	fmt.Printf("%+v\n", user)
+	if user.Remember == "" {
+		panic("Invalid remember token")
 	}
+	// Now verify that we can lookup a user with that remember
+	// token
+	user2, err := us.ByRemember(user.Remember)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("%+v\n", *user2)
 }
-
-// func getInfo() (name, email string) {
-// 	reader := bufio.NewReader(os.Stdin)
-// 	fmt.Println("What is your name?")
-// 	name, _ = reader.ReadString('\n')
-// 	name = strings.TrimSpace(name)
-// 	fmt.Println("What is your email?")
-// 	email, _ = reader.ReadString('\n')
-// 	email = strings.TrimSpace(email)
-// 	return name, email
-// }
