@@ -12,7 +12,7 @@ import (
 type Users struct {
 	NewView   *views.View
 	LoginView *views.View
-	us        *models.UserService
+	us        models.UserService
 }
 
 type SignupForm struct {
@@ -26,7 +26,7 @@ type LoginForm struct {
 	Password string `schema:"password"`
 }
 
-func NewUsers(us *models.UserService) *Users {
+func NewUsers(us models.UserService) *Users {
 	return &Users{
 		NewView:   views.NewView("bootstrap", "users/new"),
 		LoginView: views.NewView("bootstrap", "users/login"),
@@ -78,8 +78,9 @@ func (u *Users) SignIn(w http.ResponseWriter, user *models.User) error {
 		}
 	}
 	cookie := http.Cookie{
-		Name:  "remember_token",
-		Value: user.Remember,
+		Name:     "remember_token",
+		Value:    user.Remember,
+		HttpOnly: true,
 	}
 	http.SetCookie(w, &cookie)
 	return nil
@@ -115,5 +116,11 @@ func (u *Users) CookieTest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	fmt.Fprintln(w, "remember_token is", cookie.Value)
+	user, err := u.us.ByRemember(cookie.Value)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Fprintln(w, user)
 }
