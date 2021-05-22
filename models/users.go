@@ -2,6 +2,7 @@ package models
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 
 	"github.com/jinzhu/gorm"
@@ -14,11 +15,14 @@ import (
 const hmacSecretKey = "secret-hmac-key"
 
 var (
-	ErrNotFound        = errors.New("models: resource not found")
-	ErrInvalidID       = errors.New("models: ID provided was invalid")
-	userPwPepper       = "secret-random-string"
-	ErrInvalidPassword = errors.New("models: incorrect password provided")
-	ErrEmailRequired   = errors.New("models: email address is required")
+	ErrNotFound          = errors.New("models: resource not found")
+	ErrIDInvalid         = errors.New("models: ID provided was invalid")
+	userPwPepper         = "secret-random-string"
+	ErrPasswordIncorrect = errors.New("models: incorrect password provided")
+	ErrEmailRequired     = errors.New("models: email address is required")
+	ErrEmailInvalid      = errors.New("models: email address is not valid")
+	ErrEmailTaken        = errors.New("models: email address is already taken")
+	ErrPasswordTooShort  = errors.New("models: password must " + "be at least 8 characters long")
 )
 
 type UserDB interface {
@@ -34,6 +38,12 @@ type UserDB interface {
 }
 
 type UserService interface {
+	// Authenticate will verify the provided email address and
+	// password are correct. If they are correct, the user
+	// corresponding to that email will be returned. Otherwise
+	// You will receive either:
+	// ErrNotFound, ErrPasswordIncorrect, or another error if
+	// something goes wrong.
 	Authenticate(email, password string) (*User, error)
 	UserDB
 }
@@ -57,7 +67,8 @@ var _ UserService = &userService{}
 
 type userValidator struct {
 	UserDB
-	hmac hash.HMAC
+	hmac       hash.HMAC
+	emailRegex *regexp.Regexp
 }
 
 type userService struct {
@@ -75,6 +86,18 @@ func runUserValFns(user *User, fns ...userValFn) error {
 	return nil
 }
 
+func NewUserService(connectionInfo string) (UserService, error) {
+	ug, err := newUserGorm(connectionInfo)
+	if err != nil {
+		return nil, err
+	}
+	hmac := hash.NewHMAC(hmacSecretKey)
+	uv := newUserValidator(ug, hmac)
+	return &userService{
+		UserDB: uv,
+	}, nil
+}
+
 func newUserGorm(connectionInfo string) (*userGorm, error) {
 	db, err := gorm.Open("postgres", connectionInfo)
 	if err != nil {
@@ -86,19 +109,12 @@ func newUserGorm(connectionInfo string) (*userGorm, error) {
 	}, nil
 }
 
-func NewUserService(connectionInfo string) (UserService, error) {
-	ug, err := newUserGorm(connectionInfo)
-	if err != nil {
-		return nil, err
+func newUserValidator(udb UserDB, hmac hash.HMAC) *userValidator {
+	return &userValidator{
+		UserDB:     udb,
+		hmac:       hmac,
+		emailRegex: regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,16}$`),
 	}
-	hmac := hash.NewHMAC(hmacSecretKey)
-	uv := &userValidator{
-		hmac:   hmac,
-		UserDB: ug,
-	}
-	return &userService{
-		UserDB: uv,
-	}, nil
 }
 
 func (ug *userGorm) ByID(id uint) (*User, error) {
@@ -165,7 +181,55 @@ func (uv *userValidator) requireEmail(user *User) error {
 	return nil
 }
 
+func (uv *userValidator) emailFormat(user *User) error {
+	if user.Email == "" {
+		return nil
+	}
+
+	if !uv.emailRegex.MatchString(user.Email) {
+		return ErrEmailInvalid
+	}
+	return nil
+}
+
+func (uv *userValidator) emailIsAvail(user *User) error {
+	existing, err := uv.ByEmail(user.Email)
+	if err == ErrNotFound {
+		return nil
+	}
+
+	if err != nil {
+		return nil
+	}
+
+	if user.ID != existing.ID {
+		return ErrEmailTaken
+	}
+
+	return nil
+}
+
+func (uv *userValidator) passwordMinLength(user *User) error {
+	if user.Password == "" {
+		return nil
+	}
+	if len(user.Password) < 8 {
+		return ErrPasswordTooShort
+	}
+	return nil
+}
+
 func (us *userService) Authenticate(email, password string) (*User, error) {
+	// Authenticate can be used to authenticate a user with the
+	// provided email address and password.
+	// If the email address provided is invalid, this will return
+	// nil, ErrNotFound
+	// If the password provided is invalid, this will return
+	// nil, ErrPasswordIncorrect
+	// If the email and password are both valid, this will return
+	// user, nil
+	// Otherwise if another error is encountered this will return
+	// nil, error
 	foundUser, err := us.ByEmail(email)
 	if err != nil {
 		return nil, err
@@ -179,7 +243,7 @@ func (us *userService) Authenticate(email, password string) (*User, error) {
 	case nil:
 		return foundUser, nil
 	case bcrypt.ErrMismatchedHashAndPassword:
-		return nil, ErrInvalidPassword
+		return nil, ErrPasswordIncorrect
 	default:
 		return nil, err
 	}
@@ -241,7 +305,9 @@ func (uv *userValidator) Create(user *User) error {
 		uv.setRememberIfUnset,
 		uv.hmacRemember,
 		uv.normalizeEmail,
-		uv.requireEmail); err != nil {
+		uv.requireEmail,
+		uv.emailFormat,
+		uv.emailIsAvail); err != nil {
 		return err
 	}
 	user.RememberHash = uv.hmac.Hash(user.Remember)
@@ -261,7 +327,9 @@ func (uv *userValidator) Update(user *User) error {
 		uv.bcryptPassword,
 		uv.hmacRemember,
 		uv.normalizeEmail,
-		uv.requireEmail); err != nil {
+		uv.requireEmail,
+		uv.emailFormat,
+		uv.emailIsAvail); err != nil {
 		return err
 	}
 	return uv.UserDB.Update(user)
