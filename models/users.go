@@ -2,6 +2,7 @@ package models
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/postgres"
@@ -17,6 +18,7 @@ var (
 	ErrInvalidID       = errors.New("models: ID provided was invalid")
 	userPwPepper       = "secret-random-string"
 	ErrInvalidPassword = errors.New("models: incorrect password provided")
+	ErrEmailRequired   = errors.New("models: email address is required")
 )
 
 type UserDB interface {
@@ -59,10 +61,6 @@ type userValidator struct {
 }
 
 type userService struct {
-	UserDB
-}
-
-type UserValidator struct {
 	UserDB
 }
 
@@ -133,8 +131,38 @@ func (ug *userGorm) ByRemember(rememberHash string) (*User, error) {
 }
 
 func (uv *userValidator) ByRemember(token string) (*User, error) {
-	rememberHash := uv.hmac.Hash(token)
-	return uv.UserDB.ByRemember(rememberHash)
+	user := User{
+		Remember: token,
+	}
+	if err := runUserValFns(&user, uv.hmacRemember); err != nil {
+		return nil, err
+	}
+	return uv.UserDB.ByRemember(user.RememberHash)
+}
+
+func (uv *userValidator) normalizeEmail(user *User) error {
+	user.Email = strings.ToLower(user.Email)
+	user.Email = strings.TrimSpace(user.Email)
+	return nil
+}
+
+func (uv *userValidator) ByEmail(email string) (*User, error) {
+	user := User{
+		Email: email,
+	}
+
+	err := runUserValFns(&user, uv.normalizeEmail)
+	if err != nil {
+		return nil, err
+	}
+	return uv.UserDB.ByEmail(user.Email)
+}
+
+func (uv *userValidator) requireEmail(user *User) error {
+	if user.Email == "" {
+		return ErrEmailRequired
+	}
+	return nil
 }
 
 func (us *userService) Authenticate(email, password string) (*User, error) {
@@ -158,6 +186,11 @@ func (us *userService) Authenticate(email, password string) (*User, error) {
 }
 
 func (uv *userValidator) bcryptPassword(user *User) error {
+	if user.Password == "" {
+		// We DO NOT need to run this if the password
+		// hasn't been changed.
+		return nil
+	}
 	pwBytes := []byte(user.Password + userPwPepper)
 	hashedBytes, err := bcrypt.GenerateFromPassword(pwBytes,
 		bcrypt.DefaultCost)
@@ -167,6 +200,15 @@ func (uv *userValidator) bcryptPassword(user *User) error {
 	user.PasswordHash = string(hashedBytes)
 	user.Password = ""
 	return nil
+}
+
+func (uv *userValidator) idGreaterThan(n uint) userValFn {
+	return userValFn(func(user *User) error {
+		if user.ID <= n {
+			return ErrInvalidID
+		}
+		return nil
+	})
 }
 
 func first(db *gorm.DB, dst interface{}) error {
@@ -194,20 +236,13 @@ func (ug *userGorm) AutoMigrate() error {
 }
 
 func (uv *userValidator) Create(user *User) error {
-	pwBytes := []byte(user.Password + userPwPepper)
-	hashedBytes, err := bcrypt.GenerateFromPassword(pwBytes,
-		bcrypt.DefaultCost)
-	if err != nil {
+	if err := runUserValFns(user,
+		uv.bcryptPassword,
+		uv.setRememberIfUnset,
+		uv.hmacRemember,
+		uv.normalizeEmail,
+		uv.requireEmail); err != nil {
 		return err
-	}
-	user.PasswordHash = string(hashedBytes)
-	user.Password = ""
-	if user.Remember == "" {
-		token, err := rand.RememberToken()
-		if err != nil {
-			return err
-		}
-		user.Remember = token
 	}
 	user.RememberHash = uv.hmac.Hash(user.Remember)
 	return uv.UserDB.Create(user)
@@ -221,6 +256,14 @@ func (uv *userValidator) Update(user *User) error {
 	if user.RememberHash != "" {
 		user.RememberHash = uv.hmac.Hash(user.Remember)
 	}
+
+	if err := runUserValFns(user,
+		uv.bcryptPassword,
+		uv.hmacRemember,
+		uv.normalizeEmail,
+		uv.requireEmail); err != nil {
+		return err
+	}
 	return uv.UserDB.Update(user)
 }
 
@@ -228,9 +271,20 @@ func (ug *userGorm) Update(user *User) error {
 	return ug.db.Save(user).Error
 }
 
+func (uv *userValidator) hmacRemember(user *User) error {
+	if user.Remember == "" {
+		return nil
+	}
+	user.RememberHash = uv.hmac.Hash(user.Remember)
+	return nil
+}
+
 func (uv *userValidator) Delete(id uint) error {
-	if id == 0 {
-		return ErrInvalidID
+	var user User
+	user.ID = id
+	err := runUserValFns(&user, uv.idGreaterThan(0))
+	if err != nil {
+		return err
 	}
 
 	return uv.UserDB.Delete(id)
@@ -243,4 +297,16 @@ func (ug *userGorm) Delete(id uint) error {
 
 func (ug userGorm) Close() error {
 	return ug.db.Close()
+}
+
+func (uv *userValidator) setRememberIfUnset(user *User) error {
+	if user.Remember != "" {
+		return nil
+	}
+	token, err := rand.RememberToken()
+	if err != nil {
+		return err
+	}
+	user.Remember = token
+	return nil
 }
