@@ -23,6 +23,9 @@ var (
 	ErrEmailInvalid      = errors.New("models: email address is not valid")
 	ErrEmailTaken        = errors.New("models: email address is already taken")
 	ErrPasswordTooShort  = errors.New("models: password must " + "be at least 8 characters long")
+	ErrPasswordRequired  = errors.New("models: password is required")
+	ErrRememberRequired  = errors.New("models: remember token " + "is required")
+	ErrRememberTooShort  = errors.New("models: remember token " + "must be at least 32 bytes")
 )
 
 type UserDB interface {
@@ -219,6 +222,20 @@ func (uv *userValidator) passwordMinLength(user *User) error {
 	return nil
 }
 
+func (uv *userValidator) passwordRequired(user *User) error {
+	if user.Password == "" {
+		return ErrPasswordRequired
+	}
+	return nil
+}
+
+func (uv *userValidator) passwordHashRequired(user *User) error {
+	if user.PasswordHash == "" {
+		return ErrPasswordRequired
+	}
+	return nil
+}
+
 func (us *userService) Authenticate(email, password string) (*User, error) {
 	// Authenticate can be used to authenticate a user with the
 	// provided email address and password.
@@ -269,7 +286,7 @@ func (uv *userValidator) bcryptPassword(user *User) error {
 func (uv *userValidator) idGreaterThan(n uint) userValFn {
 	return userValFn(func(user *User) error {
 		if user.ID <= n {
-			return ErrInvalidID
+			return ErrIDInvalid
 		}
 		return nil
 	})
@@ -301,7 +318,10 @@ func (ug *userGorm) AutoMigrate() error {
 
 func (uv *userValidator) Create(user *User) error {
 	if err := runUserValFns(user,
+		uv.passwordRequired,
+		uv.passwordMinLength,
 		uv.bcryptPassword,
+		uv.passwordHashRequired,
 		uv.setRememberIfUnset,
 		uv.hmacRemember,
 		uv.normalizeEmail,
@@ -324,7 +344,9 @@ func (uv *userValidator) Update(user *User) error {
 	}
 
 	if err := runUserValFns(user,
+		uv.passwordMinLength,
 		uv.bcryptPassword,
+		uv.passwordHashRequired,
 		uv.hmacRemember,
 		uv.normalizeEmail,
 		uv.requireEmail,
