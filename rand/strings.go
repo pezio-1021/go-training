@@ -26,3 +26,11 @@ func RememberToken() (string, error) {
 	const RememberTokenBytes = 32
 	return String(RememberTokenBytes)
 }
+
+func NBytes(base64string string) (int, error) {
+	b, err := base64.URLEncoding.DecodeString(base64string)
+	if err != nil {
+		return -1, err
+	}
+	return len(b), nil
+}
