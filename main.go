@@ -6,6 +6,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"lenslocked.com/controllers"
+	"lenslocked.com/middleware"
 	"lenslocked.com/models"
 )
 
@@ -25,12 +26,18 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer services.User.Close()
-	services.User.AutoMigrate()
+	defer services.Close()
+	services.AutoMigrate()
 
+	requireUserMw := middleware.RequireUser{
+		UserService: services.User,
+	}
 	staticC := controllers.NewStatic()
 	userC := controllers.NewUsers(services.User)
+	galleriesC := controllers.NewGalleries(services.Gallery)
 
+	newGallery := requireUserMw.Apply(galleriesC.New)
+	createGallery := requireUserMw.ApplyFn(galleriesC.Create)
 	r := mux.NewRouter()
 	r.Handle("/", staticC.Home).Methods("GET")
 	r.Handle("/contact", staticC.Contact).Methods("GET")
@@ -40,5 +47,7 @@ func main() {
 	r.Handle("/login", userC.LoginView).Methods("GET")
 	r.HandleFunc("/login", userC.Login).Methods("POST")
 	r.HandleFunc("/cookietest", userC.CookieTest).Methods("GET")
+	r.Handle("/galleries/new", newGallery).Methods("GET")
+	r.HandleFunc("/galleries", createGallery).Methods("POST")
 	http.ListenAndServe(":3000", r)
 }

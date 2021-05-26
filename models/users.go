@@ -41,9 +41,6 @@ type UserDB interface {
 	Create(user *User) error
 	Update(user *User) error
 	Delete(id uint) error
-	Close() error
-	AutoMigrate() error
-	DestructiveReset() error
 }
 
 type UserService interface {
@@ -326,22 +323,6 @@ func first(db *gorm.DB, dst interface{}) error {
 	return err
 }
 
-func (ug *userGorm) DestructiveReset() error {
-	err := ug.db.DropTableIfExists(&User{}).Error
-	if err != nil {
-		return err
-	}
-	return ug.AutoMigrate()
-}
-
-func (ug *userGorm) AutoMigrate() error {
-	if err := ug.db.AutoMigrate(&User{}).Error; err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (uv *userValidator) Create(user *User) error {
 	if err := runUserValFns(user,
 		uv.passwordRequired,
@@ -413,10 +394,6 @@ func (uv *userValidator) Delete(id uint) error {
 func (ug *userGorm) Delete(id uint) error {
 	user := User{Model: gorm.Model{ID: id}}
 	return ug.db.Delete(&user).Error
-}
-
-func (ug userGorm) Close() error {
-	return ug.db.Close()
 }
 
 func (uv *userValidator) setRememberIfUnset(user *User) error {

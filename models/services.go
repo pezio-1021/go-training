@@ -5,6 +5,7 @@ import "github.com/jinzhu/gorm"
 type Services struct {
 	Gallery GalleryService
 	User    UserService
+	db      *gorm.DB
 }
 
 func NewServices(connectionInfo string) (*Services, error) {
@@ -13,10 +14,25 @@ func NewServices(connectionInfo string) (*Services, error) {
 		return nil, err
 	}
 	db.LogMode(true)
-	// And next we need to construct services, but
-	// we can't construct the UserService yet.
 	return &Services{
 		User:    NewUserService(db),
-		Gallery: &galleryGorm{},
+		Gallery: NewGalleryService(db),
+		db:      db,
 	}, nil
+}
+
+func (s *Services) Close() error {
+	return s.db.Close()
+}
+
+func (s *Services) AutoMigrate() error {
+	return s.db.AutoMigrate(&User{}, &Gallery{}).Error
+}
+
+func (s *Services) DestructiveReset() error {
+	err := s.db.DropTableIfExists(&User{}, &Gallery{}).Error
+	if err != nil {
+		return nil
+	}
+	return s.AutoMigrate()
 }
