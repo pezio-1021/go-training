@@ -4,13 +4,15 @@ import (
 	"fmt"
 	"net/http"
 
+	"lenslocked.com/context"
 	"lenslocked.com/models"
 	"lenslocked.com/views"
 )
 
 type Galleries struct {
-	New *views.View
-	gs  models.GalleryService
+	New      *views.View
+	ShowView *views.View
+	gs       models.GalleryService
 }
 
 type GalleryForm struct {
@@ -19,8 +21,9 @@ type GalleryForm struct {
 
 func NewGalleries(gs models.GalleryService) *Galleries {
 	return &Galleries{
-		New: views.NewView("bootstrap", "galleries/new"),
-		gs:  gs,
+		New:      views.NewView("bootstrap", "galleries/new"),
+		ShowView: views.NewView("bootstrap", "galleries/show"),
+		gs:       gs,
 	}
 }
 
@@ -32,8 +35,10 @@ func (g Galleries) Create(w http.ResponseWriter, r *http.Request) {
 		g.New.Render(w, vd)
 	}
 
+	user := context.User(r.Context())
 	gallery := models.Gallery{
-		Title: form.Title,
+		Title:  form.Title,
+		UserID: user.ID,
 	}
 
 	if err := g.gs.Create(&gallery); err != nil {
