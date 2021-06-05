@@ -32,13 +32,13 @@ func main() {
 	requireUserMw := middleware.RequireUser{
 		UserService: services.User,
 	}
+	r := mux.NewRouter()
 	staticC := controllers.NewStatic()
 	userC := controllers.NewUsers(services.User)
-	galleriesC := controllers.NewGalleries(services.Gallery)
+	galleriesC := controllers.NewGalleries(services.Gallery, r)
 
 	newGallery := requireUserMw.Apply(galleriesC.New)
 	createGallery := requireUserMw.ApplyFn(galleriesC.Create)
-	r := mux.NewRouter()
 	r.Handle("/", staticC.Home).Methods("GET")
 	r.Handle("/contact", staticC.Contact).Methods("GET")
 	r.Handle("/faq", staticC.Faq).Methods("GET")
@@ -47,7 +47,13 @@ func main() {
 	r.Handle("/login", userC.LoginView).Methods("GET")
 	r.HandleFunc("/login", userC.Login).Methods("POST")
 	r.HandleFunc("/cookietest", userC.CookieTest).Methods("GET")
+	r.HandleFunc("/galleries/{id:[0-9]+}",
+		galleriesC.Show).Methods("GET").Name(controllers.ShowGallery)
 	r.Handle("/galleries/new", newGallery).Methods("GET")
 	r.HandleFunc("/galleries", createGallery).Methods("POST")
+	r.HandleFunc("/galleries/{id:[0-9]+}/edit",
+		requireUserMw.ApplyFn(galleriesC.Edit)).Methods("GET")
+	r.HandleFunc("/galleries/{id:[0-9]+}/update",
+		requireUserMw.ApplyFn(galleriesC.Update)).Methods("POST")
 	http.ListenAndServe(":3000", r)
 }

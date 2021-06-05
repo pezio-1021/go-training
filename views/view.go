@@ -19,8 +19,6 @@ type View struct {
 	Layout   string
 }
 
-var buf bytes.Buffer
-
 func (v *View) Render(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "text/html")
 	switch data.(type) {
