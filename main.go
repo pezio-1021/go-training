@@ -29,9 +29,10 @@ func main() {
 	defer services.Close()
 	services.AutoMigrate()
 
-	requireUserMw := middleware.RequireUser{
+	userMw := middleware.User{
 		UserService: services.User,
 	}
+	requireUserMw := middleware.RequireUser{}
 	r := mux.NewRouter()
 	staticC := controllers.NewStatic()
 	userC := controllers.NewUsers(services.User)
@@ -39,6 +40,10 @@ func main() {
 
 	newGallery := requireUserMw.Apply(galleriesC.New)
 	createGallery := requireUserMw.ApplyFn(galleriesC.Create)
+	r.Handle("/galleries",
+		requireUserMw.ApplyFn(galleriesC.Index)).
+		Methods("GET").
+		Name(controllers.IndexGalleries)
 	r.Handle("/", staticC.Home).Methods("GET")
 	r.Handle("/contact", staticC.Contact).Methods("GET")
 	r.Handle("/faq", staticC.Faq).Methods("GET")
@@ -52,8 +57,15 @@ func main() {
 	r.Handle("/galleries/new", newGallery).Methods("GET")
 	r.HandleFunc("/galleries", createGallery).Methods("POST")
 	r.HandleFunc("/galleries/{id:[0-9]+}/edit",
-		requireUserMw.ApplyFn(galleriesC.Edit)).Methods("GET")
+		requireUserMw.ApplyFn(galleriesC.Edit)).
+		Methods("GET").
+		Name(controllers.EditGallery)
 	r.HandleFunc("/galleries/{id:[0-9]+}/update",
 		requireUserMw.ApplyFn(galleriesC.Update)).Methods("POST")
-	http.ListenAndServe(":3000", r)
+	r.HandleFunc("/galleries/{id:[0-9]+}/delete",
+		requireUserMw.ApplyFn(galleriesC.Delete)).Methods("POST")
+	http.ListenAndServe(":3000", userMw.Apply(r))
+	r.HandleFunc("/galleries/{id:[0-9]+}/images",
+		requireUserMw.ApplyFn(galleriesC.ImageUpload)).
+		Methods("POST")
 }

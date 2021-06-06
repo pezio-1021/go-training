@@ -19,8 +19,10 @@ type GalleryService interface {
 
 type GalleryDB interface {
 	ById(id uint) (*Gallery, error)
+	ByUserID(userID uint) ([]Gallery, error)
 	Create(gallery *Gallery) error
 	Update(gallery *Gallery) error
+	Delete(id uint) error
 }
 
 type galleryGorm struct {
@@ -65,6 +67,35 @@ func (gg *galleryGorm) ById(id uint) (*Gallery, error) {
 		return nil, err
 	}
 	return &gallery, nil
+}
+
+func (gg *galleryGorm) ByUserID(userID uint) ([]Gallery, error) {
+	var galleries []Gallery
+	db := gg.db.Where("user_id = ?", userID)
+	if err := db.Find(&galleries).Error; err != nil {
+		return nil, err
+	}
+	return galleries, nil
+}
+
+func (gg *galleryGorm) Delete(id uint) error {
+	gallery := Gallery{Model: gorm.Model{ID: id}}
+	return gg.db.Delete(&gallery).Error
+}
+
+func (gv *galleryValidator) nonZeroID(gallery *Gallery) error {
+	if gallery.ID <= 0 {
+		return ErrIDInvalid
+	}
+	return nil
+}
+func (gv *galleryValidator) Delete(id uint) error {
+	var gallery Gallery
+	gallery.ID = id
+	if err := runGalleryValFns(&gallery, gv.nonZeroID); err != nil {
+		return err
+	}
+	return gv.GalleryDB.Delete(gallery.ID)
 }
 
 func runGalleryValFns(gallery *Gallery, fns ...galleryValFn) error {
