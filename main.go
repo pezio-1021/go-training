@@ -36,7 +36,7 @@ func main() {
 	r := mux.NewRouter()
 	staticC := controllers.NewStatic()
 	userC := controllers.NewUsers(services.User)
-	galleriesC := controllers.NewGalleries(services.Gallery, r)
+	galleriesC := controllers.NewGalleries(services.Gallery, services.Image, r)
 
 	newGallery := requireUserMw.Apply(galleriesC.New)
 	createGallery := requireUserMw.ApplyFn(galleriesC.Create)
@@ -64,8 +64,9 @@ func main() {
 		requireUserMw.ApplyFn(galleriesC.Update)).Methods("POST")
 	r.HandleFunc("/galleries/{id:[0-9]+}/delete",
 		requireUserMw.ApplyFn(galleriesC.Delete)).Methods("POST")
-	http.ListenAndServe(":3000", userMw.Apply(r))
 	r.HandleFunc("/galleries/{id:[0-9]+}/images",
 		requireUserMw.ApplyFn(galleriesC.ImageUpload)).
 		Methods("POST")
+	http.ListenAndServe(":3000", userMw.Apply(r))
+
 }

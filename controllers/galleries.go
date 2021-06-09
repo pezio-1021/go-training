@@ -1,11 +1,7 @@
 package controllers
 
 import (
-	"fmt"
-	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 
 	"github.com/gorilla/mux"
@@ -27,6 +23,7 @@ type Galleries struct {
 	EditView  *views.View
 	IndexView *views.View
 	gs        models.GalleryService
+	is        models.ImageService
 	r         *mux.Router
 }
 
@@ -34,13 +31,14 @@ type GalleryForm struct {
 	Title string `schema:"title"`
 }
 
-func NewGalleries(gs models.GalleryService, r *mux.Router) *Galleries {
+func NewGalleries(gs models.GalleryService, is models.ImageService, r *mux.Router) *Galleries {
 	return &Galleries{
 		New:       views.NewView("bootstrap", "galleries/new"),
 		ShowView:  views.NewView("bootstrap", "galleries/show"),
 		EditView:  views.NewView("bootstrap", "galleries/edit"),
 		IndexView: views.NewView("bootstrap", "galleries/index"),
 		gs:        gs,
+		is:        is,
 		r:         r,
 	}
 }
@@ -200,7 +198,6 @@ func (g *Galleries) Update(w http.ResponseWriter, r *http.Request) {
 
 func (g *Galleries) ImageUpload(w http.ResponseWriter, r *http.Request) {
 	gallery, err := g.galleryByID(w, r)
-	fmt.Printf("%#v\n", gallery)
 	if err != nil {
 		return
 	}
@@ -219,15 +216,6 @@ func (g *Galleries) ImageUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	galleryPath := filepath.Join("images", "galleries",
-		fmt.Sprintf("%v", gallery.ID))
-	err = os.MkdirAll(galleryPath, 0755)
-	if err != nil {
-		// If we get an error, render the edit gallery page again
-		vd.SetAlert(err)
-		g.EditView.Render(w, r, vd)
-		return
-	}
 	files := r.MultipartForm.File["images"]
 	for _, f := range files {
 		// Open the uploaded file
@@ -238,14 +226,8 @@ func (g *Galleries) ImageUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer file.Close()
-		dst, err := os.Create(filepath.Join(galleryPath, f.Filename))
-		if err != nil {
-			vd.SetAlert(err)
-			g.EditView.Render(w, r, vd)
-			return
-		}
-		defer dst.Close()
-		_, err = io.Copy(dst, file)
+
+		err = g.is.Create(gallery.ID, file, f.Filename)
 		if err != nil {
 			vd.SetAlert(err)
 			g.EditView.Render(w, r, vd)
