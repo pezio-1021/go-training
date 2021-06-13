@@ -40,6 +40,8 @@ func main() {
 
 	newGallery := requireUserMw.Apply(galleriesC.New)
 	createGallery := requireUserMw.ApplyFn(galleriesC.Create)
+	imageHandler := http.FileServer(http.Dir("./images/"))
+	r.PathPrefix("/images/").Handler(http.StripPrefix("/images/", imageHandler))
 	r.Handle("/galleries",
 		requireUserMw.ApplyFn(galleriesC.Index)).
 		Methods("GET").
